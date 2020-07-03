@@ -8,6 +8,8 @@ typedef unsigned long long __le64;
 
 #define __packed __attribute__((packed))
 
+#define offsetof(TYPE, MEMBER)  ((size_t)&((TYPE *)0)->MEMBER)
+
 /* LITTLE_ENDIAN */
 static inline unsigned short le16_to_cpu(__le16 le)
 {
