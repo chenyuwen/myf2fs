@@ -1,0 +1,33 @@
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include "page.h"
+#include "f2fs.h"
+
+int f2fs_fill_super(struct f2fs_super *super, char *devpath)
+{
+	struct f2fs_super_block *raw_super = NULL;
+	struct page *sp1, *sp2;
+	int ret = 0;
+	super->fd = open(devpath, O_RDWR);
+	if(super->fd < 0) {
+		perror("open");
+		return super->fd;
+	}
+
+	sp1 = alloc_page();
+	if(sp1 == NULL) {
+		perror("alloc_page");
+		return -ENOMEM;
+	}
+	ret = read_page(sp1, super->fd, 0);
+	if(ret < 0) {
+		perror("read_page");
+		return ret;
+	}
+
+	raw_super = (void *)((char *)page_address(sp1) + F2FS_SUPER_OFFSET);
+	super->raw_super = raw_super;
+	return 0;
+}
