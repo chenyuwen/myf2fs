@@ -9,17 +9,17 @@ typedef unsigned long long __le64;
 #define __packed __attribute__((packed))
 
 /* LITTLE_ENDIAN */
-static inline le16_to_cpu(__le16 le)
+static inline unsigned short le16_to_cpu(__le16 le)
 {
 	return le;
 }
 
-static inline le32_to_cpu(__le32 le)
+static inline unsigned int le32_to_cpu(__le32 le)
 {
 	return le;
 }
 
-static inline le64_to_cpu(__le64 le)
+static inline unsigned long long le64_to_cpu(__le64 le)
 {
 	return le;
 }
