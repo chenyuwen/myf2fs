@@ -1,0 +1,22 @@
+#ifndef __CRC32_H__
+#define __CRC32_H__
+#include <stdint.h>
+#include <sys/types.h>
+
+#define CRC32_INIT	0xffffffff
+
+uint32_t crc32_update(const char *buf, unsigned int len, uint32_t crc32val);
+
+
+static inline uint32_t crc32_classic(const void * buf, unsigned int size)
+{
+	return crc32_update(buf, size, CRC32_INIT) ^ CRC32_INIT;
+}
+
+static inline uint32_t crc32_finalize(uint32_t crc)
+{
+	return crc ^ CRC32_INIT;
+}
+
+
+#endif /* __CRC32_H__ */
