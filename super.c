@@ -10,6 +10,7 @@
 #include "crc32.h"
 #include "super.h"
 
+void print_hex(void *hex, int size);
 int f2fs_fill_super(struct f2fs_super *super, char *devpath)
 {
 	struct f2fs_super_block *raw_super = NULL;
@@ -50,6 +51,7 @@ retry:
 	}
 
 	if(!F2FS_HAS_FEATURE(raw_super, F2FS_FEATURE_SB_CHKSUM)) {
+		printf("skip crc.\n");
 		goto out;
 	}
 
@@ -138,7 +140,7 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	struct page *nat_page = NULL, *inode_page = NULL;
 	struct f2fs_nat_block *nat = NULL;
 	struct f2fs_raw_inode *raw_inode;
-	int ret = 0;
+	int ret = 0, byteoff = 0, bitoff = 0;
 	unsigned long blkaddr = 0, tmpaddr;
 
 	nat_page = alloc_page();
@@ -150,7 +152,14 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	tmpaddr = ((unsigned long)ino / NAT_ENTRY_PER_BLOCK);
 	blkaddr = le32_to_cpu(super->raw_super->nat_blkaddr) + tmpaddr + (tmpaddr) * 2;
 
-//	printf("[%lu]:%lu\n", ino, blkaddr);
+	byteoff = ino / 8;
+	bitoff = ino % 8;
+	if(super->raw_cp->sit_nat_version_bitmap[byteoff] & (1 << bitoff)) {
+		printf("here\n");
+		blkaddr++;
+	}
+
+	printf("[%lu]:%lu\n", ino, blkaddr);
 	ret = read_page(nat_page, super->fd, blkaddr);
 	if(ret < 0) {
 		free_page(nat_page);
@@ -159,9 +168,9 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	}
 
 	nat = (void *)page_address(nat_page);
-//	printf("%d %d %d\n", nat->entries[ino % NAT_ENTRY_PER_BLOCK].version,
-//		le32_to_cpu(nat->entries[ino % NAT_ENTRY_PER_BLOCK].ino),
-//		le32_to_cpu(nat->entries[ino % NAT_ENTRY_PER_BLOCK].block_addr));
+	printf("%d %d %d\n", nat->entries[ino % NAT_ENTRY_PER_BLOCK].version,
+		le32_to_cpu(nat->entries[ino % NAT_ENTRY_PER_BLOCK].ino),
+		le32_to_cpu(nat->entries[ino % NAT_ENTRY_PER_BLOCK].block_addr));
 
 	inode_page = alloc_page();
 	if(inode_page == NULL) {
@@ -171,7 +180,7 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	}
 
 	blkaddr = le32_to_cpu(nat->entries[ino % NAT_ENTRY_PER_BLOCK].block_addr);
-//	printf("blkaddr %lu\n", blkaddr);
+	printf("blkaddr %lu\n", blkaddr);
 	ret = read_page(inode_page, super->fd, blkaddr);
 	if(ret < 0) {
 		free_page(inode_page);
@@ -181,7 +190,7 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	}
 
 	raw_inode = (void *)page_address(inode_page);
-//	printf("%lu\n", (size_t)le64_to_cpu(raw_inode->i_size));
+	printf("%lu\n", (size_t)le64_to_cpu(raw_inode->i_mode));
 
 	inode->raw_inode = raw_inode;
 	inode->nat_block = nat;
@@ -203,7 +212,6 @@ void f2fs_free_inode(struct f2fs_inode *inode)
 	}
 }
 
-void print_hex(void *hex, int size);
 struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *inode)
 {
 	struct dir_iter *iter = NULL;
@@ -229,7 +237,7 @@ struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *ino
 	page = alloc_page();
 	ret = read_page(page, super->fd, le32_to_cpu(inode->raw_inode->i_addr[0]));
 	dentry_block = page_address(page);
-	printf("inode:%lu\n", le32_to_cpu(dentry_block->dentry[1].ino));
+	printf("inode:%u\n", le32_to_cpu(dentry_block->dentry[1].ino));
 
 	iter->inode = inode;
 	iter->off = 0;
@@ -268,8 +276,17 @@ struct f2fs_inode *dir_iter_next(struct dir_iter *iter)
 
 void dir_iter_end(struct dir_iter *iter)
 {
+	struct page *page = NULL;
+	if(iter == NULL) {
+		return;
+	}
+
+	page = address_to_page(iter->dentry);
+	free_page(page);
+
 	if(f2fs_is_vaild_inode(&iter->tmp)) {
 		f2fs_free_inode(&iter->tmp);
 	}
 	free(iter);
 }
+
