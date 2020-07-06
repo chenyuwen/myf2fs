@@ -54,6 +54,7 @@ void print_checkpoint(struct f2fs_super *super)
 int main(int argc, char **argv)
 {
 	struct f2fs_super super;
+	struct f2fs_inode root_inode;
 	int ret = 0;
 
 	if(argc <= 1) {
@@ -72,6 +73,8 @@ int main(int argc, char **argv)
 
 	print_super(&super);
 	print_checkpoint(&super);
+
+	f2fs_read_inode(&super, &root_inode, le32_to_cpu(super.raw_super->root_ino));
 
 //	unmount_super();
 	return 0;

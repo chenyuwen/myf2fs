@@ -2,6 +2,7 @@
 #define __F2FS_H__
 #include <errno.h>
 #include "f2fs_type.h"
+#include "page.h"
 
 #define F2FS_SUPER_MAGIC        0xF2F52010
 
@@ -131,5 +132,89 @@ struct f2fs_super {
 
 #define F2FS_HAS_FEATURE(raw_super, mask) \
 	((le32_to_cpu(raw_super->feature) & (mask)) != 0)
+
+/*
+ * For NAT entries
+ */
+#define NAT_ENTRY_PER_BLOCK (F2FS_PAGE_SIZE / sizeof(struct f2fs_nat_entry))
+
+struct f2fs_nat_entry {
+        __u8 version;           /* latest version of cached nat entry */
+        __le32 ino;             /* inode number */
+        __le32 block_addr;      /* block address */
+} __packed;
+
+struct f2fs_nat_block {
+        struct f2fs_nat_entry entries[NAT_ENTRY_PER_BLOCK];
+} __packed;
+
+/*
+ * For NODE structure
+ */
+struct f2fs_extent {
+        __le32 fofs;            /* start file offset of the extent */
+        __le32 blk;             /* start block address of the extent */
+        __le32 len;             /* length of the extent */
+} __packed;
+
+#define F2FS_NAME_LEN           255
+#define DEF_ADDRS_PER_INODE     923     /* Address Pointers in an Inode */
+#define DEF_NIDS_PER_INODE      5       /* Node IDs in an Inode */
+
+struct f2fs_raw_inode {
+        __le16 i_mode;                  /* file mode */
+        __u8 i_advise;                  /* file hints */
+        __u8 i_inline;                  /* file inline flags */
+        __le32 i_uid;                   /* user ID */
+        __le32 i_gid;                   /* group ID */
+        __le32 i_links;                 /* links count */
+        __le64 i_size;                  /* file size in bytes */
+        __le64 i_blocks;                /* file size in blocks */
+        __le64 i_atime;                 /* access time */
+        __le64 i_ctime;                 /* change time */
+        __le64 i_mtime;                 /* modification time */
+        __le32 i_atime_nsec;            /* access time in nano scale */
+        __le32 i_ctime_nsec;            /* change time in nano scale */
+        __le32 i_mtime_nsec;            /* modification time in nano scale */
+        __le32 i_generation;            /* file version (for NFS) */
+        union {
+                __le32 i_current_depth; /* only for directory depth */
+                __le16 i_gc_failures;   /*
+                                         * # of gc failures on pinned file.
+                                         * only for regular files.
+                                         */
+        };
+        __le32 i_xattr_nid;             /* nid to save xattr */
+        __le32 i_flags;                 /* file attributes */
+        __le32 i_pino;                  /* parent inode number */
+        __le32 i_namelen;               /* file name length */
+        __u8 i_name[F2FS_NAME_LEN];     /* file name for SPOR */
+        __u8 i_dir_level;               /* dentry_level for large dir */
+
+        struct f2fs_extent i_ext;       /* caching a largest extent */
+
+        union {
+                struct {
+                        __le16 i_extra_isize;   /* extra inode attribute size */
+                        __le16 i_inline_xattr_size;     /* inline xattr size, unit: 4 bytes */
+                        __le32 i_projid;        /* project id */
+                        __le32 i_inode_checksum;/* inode meta checksum */
+                        __le64 i_crtime;        /* creation time */
+                        __le32 i_crtime_nsec;   /* creation time in nano scale */
+                        __le32 i_extra_end[0];  /* for attribute size calculation */
+                } __packed;
+                __le32 i_addr[DEF_ADDRS_PER_INODE];     /* Pointers to data blocks */
+        };
+        __le32 i_nid[DEF_NIDS_PER_INODE];       /* direct(2), indirect(2),
+                                                double_indirect(1) node id */
+} __packed;
+
+typedef unsigned long inode_t;
+
+struct f2fs_inode {
+	inode_t ino;
+	struct f2fs_nat_block *nat_block;
+	struct f2fs_raw_inode *raw_inode;
+};
 
 #endif /*__F2FS_H__*/

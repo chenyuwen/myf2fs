@@ -85,6 +85,7 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 
 	ret = read_page(cp1_page, super->fd, cpblk);
 	if(ret < 0) {
+		free_page(cp1_page);
 		perror("read page");
 		return ret;
 	}
@@ -93,6 +94,7 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 
 	cp2_page = alloc_page();
 	if(cp2_page == NULL) {
+		free_page(cp1_page);
 		perror("alloc page");
 		return -ENOMEM;
 	}
@@ -100,6 +102,7 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 	cpblk += 1 << le32_to_cpu(super->raw_super->log_blocks_per_seg);
 	ret = read_page(cp2_page, super->fd, cpblk);
 	if(ret < 0) {
+		free_page(cp2_page);
 		perror("read page");
 		return ret;
 	}
@@ -113,5 +116,61 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 		super->raw_cp = cp2;
 		super->raw_cp_bak = cp1;
 	}
+	return 0;
+}
+
+int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t ino)
+{
+	struct page *nat_page = NULL, *inode_page = NULL;
+	struct f2fs_nat_block *nat = NULL;
+	struct f2fs_raw_inode *raw_inode;
+	int ret = 0;
+	unsigned long blkaddr = 0, tmpaddr;
+
+	nat_page = alloc_page();
+	if(nat_page == NULL) {
+		perror("alloc page");
+		return -ENOMEM;
+	}
+
+	tmpaddr = ((unsigned long)ino / NAT_ENTRY_PER_BLOCK);
+	blkaddr = le32_to_cpu(super->raw_super->nat_blkaddr) + tmpaddr + (tmpaddr) * 2;
+
+	printf("[%lu]:%lu\n", ino, blkaddr);
+	ret = read_page(nat_page, super->fd, blkaddr);
+	if(ret < 0) {
+		free_page(nat_page);
+		perror("read page");
+		return -1;
+	}
+
+	nat = (void *)page_address(nat_page);
+	printf("%d %d %d\n", nat->entries[ino % NAT_ENTRY_PER_BLOCK].version,
+		le32_to_cpu(nat->entries[ino % NAT_ENTRY_PER_BLOCK].ino),
+		le32_to_cpu(nat->entries[ino % NAT_ENTRY_PER_BLOCK].block_addr));
+
+	inode_page = alloc_page();
+	if(inode_page == NULL) {
+		free_page(nat_page);
+		perror("alloc page");
+		return -ENOMEM;
+	}
+
+	blkaddr = le32_to_cpu(nat->entries[ino % NAT_ENTRY_PER_BLOCK].block_addr);
+	printf("blkaddr %lu\n", blkaddr);
+	ret = read_page(inode_page, super->fd, blkaddr);
+	if(ret < 0) {
+		free_page(inode_page);
+		free_page(nat_page);
+		perror("read page");
+		return -1;
+	}
+
+	raw_inode = (void *)page_address(inode_page);
+	printf("%lu\n", (size_t)le64_to_cpu(raw_inode->i_size));
+
+	inode->raw_inode = raw_inode;
+	inode->nat_block = nat;
+	inode->ino = ino;
 	return 0;
 }
