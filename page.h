@@ -16,6 +16,11 @@ static inline void *page_address(struct page *page)
 	return (void *)page;
 }
 
+static inline struct page *address_to_page(void *address)
+{
+	return (struct page *)address;
+}
+
 static inline struct page *alloc_page()
 {
 	return (void *)malloc(F2FS_PAGE_SIZE);

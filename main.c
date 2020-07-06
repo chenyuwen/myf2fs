@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <sys/stat.h>
 #include "f2fs.h"
 #include "super.h"
 
@@ -54,7 +55,8 @@ void print_checkpoint(struct f2fs_super *super)
 int main(int argc, char **argv)
 {
 	struct f2fs_super super;
-	struct f2fs_inode root_inode;
+	struct f2fs_inode root_inode, *iter_pos;
+	struct dir_iter *iter = NULL;
 	int ret = 0;
 
 	if(argc <= 1) {
@@ -68,6 +70,7 @@ int main(int argc, char **argv)
 
 	ret = f2fs_get_valid_checkpoint(&super);
 	if(ret < 0) {
+		f2fs_umount(&super);
 		return ret;
 	}
 
@@ -75,7 +78,17 @@ int main(int argc, char **argv)
 	print_checkpoint(&super);
 
 	f2fs_read_inode(&super, &root_inode, le32_to_cpu(super.raw_super->root_ino));
+	if(!S_ISDIR(le32_to_cpu(root_inode.raw_inode->i_mode))) {
+		f2fs_umount(&super);
+		return ret;
+	}
 
-//	unmount_super();
+	iter = dir_iter_start(&super, &root_inode);
+	while(iter_pos = dir_iter_next(iter)) {
+		printf("iter %s\n", iter_pos->raw_inode->i_name);
+	}
+	dir_iter_end(iter);
+
+	f2fs_umount(&super);
 	return 0;
 }

@@ -1,6 +1,7 @@
 #ifndef __F2FS_TYPE_H__
 #define __F2FS_TYPE_H__
 
+#define BITS_PER_BYTE 8
 typedef unsigned char __u8;
 typedef unsigned short __le16;
 typedef unsigned int __le32;

@@ -160,6 +160,10 @@ struct f2fs_extent {
 #define F2FS_NAME_LEN           255
 #define DEF_ADDRS_PER_INODE     923     /* Address Pointers in an Inode */
 #define DEF_NIDS_PER_INODE      5       /* Node IDs in an Inode */
+#define DEF_ADDRS_PER_BLOCK     1018    /* Address Pointers in a Direct Block */
+#define NIDS_PER_BLOCK          1018    /* Node IDs in an Indirect Block */
+
+#define F2FS_INLINE_DENTRY      0x04    /* file inline dentry flag */
 
 struct f2fs_raw_inode {
         __le16 i_mode;                  /* file mode */
@@ -209,6 +213,35 @@ struct f2fs_raw_inode {
                                                 double_indirect(1) node id */
 } __packed;
 
+struct direct_node {
+	__le32 addr[DEF_ADDRS_PER_BLOCK];       /* array of data block address */
+} __packed;
+
+struct indirect_node {
+	__le32 nid[NIDS_PER_BLOCK];     /* array of data block address */
+} __packed;
+
+
+#define OFFSET_BIT_MASK         (0x07)  /* (0x01 << OFFSET_BIT_SHIFT) - 1 */
+
+struct node_footer {
+	__le32 nid;             /* node id */
+	__le32 ino;             /* inode number */
+	__le32 flag;            /* include cold/fsync/dentry marks and offset */
+	__le64 cp_ver;          /* checkpoint version */
+	__le32 next_blkaddr;    /* next node page block address */
+} __packed;
+
+struct f2fs_node {
+	/* can be one of three types: inode, direct, and indirect types */
+	union {
+		struct f2fs_raw_inode i;
+		struct direct_node dn;
+		struct indirect_node in;
+	};
+	struct node_footer footer;
+} __packed;
+
 typedef unsigned long inode_t;
 
 struct f2fs_inode {
@@ -216,5 +249,55 @@ struct f2fs_inode {
 	struct f2fs_nat_block *nat_block;
 	struct f2fs_raw_inode *raw_inode;
 };
+
+/* One directory entry slot covers 8bytes-long file name */
+#define F2FS_SLOT_LEN           8
+#define F2FS_SLOT_LEN_BITS      3
+
+#define GET_DENTRY_SLOTS(x) (((x) + F2FS_SLOT_LEN - 1) >> F2FS_SLOT_LEN_BITS)
+
+/* MAX level for dir lookup */
+#define MAX_DIR_HASH_DEPTH      63
+
+/* MAX buckets in one level of dir */
+#define MAX_DIR_BUCKETS         (1 << ((MAX_DIR_HASH_DEPTH / 2) - 1))
+
+/*
+ * space utilization of regular dentry and inline dentry (w/o extra reservation)
+ *              regular dentry          inline dentry (def)     inline dentry (min)
+ * bitmap       1 * 27 = 27             1 * 23 = 23             1 * 1 = 1
+ * reserved     1 * 3 = 3               1 * 7 = 7               1 * 1 = 1
+ * dentry       11 * 214 = 2354         11 * 182 = 2002         11 * 2 = 22
+ * filename     8 * 214 = 1712          8 * 182 = 1456          8 * 2 = 16
+ * total        4096                    3488                    40
+ *
+ * Note: there are more reserved space in inline dentry than in regular
+ * dentry, when converting inline dentry we should handle this carefully.
+ */
+#define NR_DENTRY_IN_BLOCK      214     /* the number of dentry in a block */
+#define SIZE_OF_DIR_ENTRY       11      /* by byte */
+#define SIZE_OF_DENTRY_BITMAP   ((NR_DENTRY_IN_BLOCK + BITS_PER_BYTE - 1) / \
+                                        BITS_PER_BYTE)
+#define SIZE_OF_RESERVED        (F2FS_PAGE_SIZE - ((SIZE_OF_DIR_ENTRY + \
+                                F2FS_SLOT_LEN) * \
+                                NR_DENTRY_IN_BLOCK + SIZE_OF_DENTRY_BITMAP))
+#define MIN_INLINE_DENTRY_SIZE          40      /* just include '.' and '..' entries */
+
+/*  directory entry slot representing F2FS_SLOT_LEN-sized file name */
+struct f2fs_dir_entry {
+	__le32 hash_code;       /* hash code of file name */
+	__le32 ino;             /* inode number */
+	__le16 name_len;        /* length of file name */
+	__u8 file_type;         /* file type */
+} __packed;
+
+/* 4KB-sized directory entry block */
+struct f2fs_dentry_block {
+	/* validity bitmap for directory entries in each block */
+	__u8 dentry_bitmap[SIZE_OF_DENTRY_BITMAP];
+	__u8 reserved[SIZE_OF_RESERVED];
+	struct f2fs_dir_entry dentry[NR_DENTRY_IN_BLOCK];
+	__u8 filename[NR_DENTRY_IN_BLOCK][F2FS_SLOT_LEN];
+} __packed;
 
 #endif /*__F2FS_H__*/
