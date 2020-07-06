@@ -41,14 +41,13 @@ retry:
 	cp_ver++;
 
 	raw_super = (void *)((char *)page_address(sp1) + F2FS_SUPER_OFFSET);
-
-	if(!F2FS_HAS_FEATURE(raw_super, F2FS_FEATURE_SB_CHKSUM)) {
-		goto out;
-	}
-
 	if(le32_to_cpu(raw_super->magic) != F2FS_SUPER_MAGIC) {
 		printf("BAD Magic %X\n", le32_to_cpu(raw_super->magic));
 		goto retry;
+	}
+
+	if(!F2FS_HAS_FEATURE(raw_super, F2FS_FEATURE_SB_CHKSUM)) {
+		goto out;
 	}
 
 	crc_offset = le32_to_cpu(raw_super->checksum_offset);
