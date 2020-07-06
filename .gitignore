@@ -1,2 +1,11 @@
 cscope.out
-f2fs_reader
+myf2fs
+*.o
+*.a
+*.swp
+
+# Cmake files
+CMakeCache.txt
+CMakeFiles
+Makefile
+cmake_install.cmake

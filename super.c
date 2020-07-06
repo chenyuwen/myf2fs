@@ -5,7 +5,7 @@
 #include "page.h"
 #include "f2fs_type.h"
 #include "f2fs.h"
-#include "crc32.h"
+#include "./crc32/crc32.h"
 
 int f2fs_fill_super(struct f2fs_super *super, char *devpath)
 {
