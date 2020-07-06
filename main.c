@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "f2fs.h"
+#include "super.h"
 
 void usage()
 {
@@ -13,13 +14,14 @@ void usage()
 	printf("f2fs dev touch [file]\n");
 }
 
-void print_hex(char *hex, int size)
+void print_hex(void *hex, int size)
 {
 	int i = 0;
+	char *tmp = hex;
 	static const char buffer[] = "0123456789ABCDEF";
 	for(i=0; i < size; i++) {
-		printf("%c%c ", buffer[(hex[i] >> 4) & 0xF],
-			buffer[hex[i] & 0xF]);
+		printf("%c%c ", buffer[(tmp[i] >> 4) & 0xF],
+			buffer[tmp[i] & 0xF]);
 		if(i % 16 == 15 && i < (size - 1)) {
 			printf("\n");
 		}
@@ -45,7 +47,7 @@ void print_checkpoint(struct f2fs_super *super)
 {
 	struct f2fs_checkpoint *raw_cp = super->raw_cp;
 
-	printf("checkpoint_ver: %X", le64_to_cpu(raw_cp->checkpoint_ver));
+	printf("checkpoint_ver: %LX", le64_to_cpu(raw_cp->checkpoint_ver));
 	printf("\n");
 }
 

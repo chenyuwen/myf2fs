@@ -12,7 +12,7 @@ int f2fs_fill_super(struct f2fs_super *super, char *devpath)
 	struct f2fs_super_block *raw_super = NULL;
 	struct page *sp1;
 	int ret = 0, cp_ver = 0;
-	unsigned long crc = 0;
+	unsigned int crc = 0;
 	size_t crc_offset = 0;
 	super->fd = open(devpath, O_RDWR);
 	if(super->fd < 0) {
@@ -53,7 +53,7 @@ retry:
 
 	crc_offset = le32_to_cpu(raw_super->checksum_offset);
 	if(crc_offset != offsetof(struct f2fs_super_block, crc)) {
-		printf("BAD CRC offset %d\n", crc_offset);
+		printf("BAD CRC offset %lu\n", crc_offset);
 		goto retry;
 	}
 
