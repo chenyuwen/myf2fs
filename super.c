@@ -268,5 +268,8 @@ struct f2fs_inode *dir_iter_next(struct dir_iter *iter)
 
 void dir_iter_end(struct dir_iter *iter)
 {
+	if(f2fs_is_vaild_inode(&iter->tmp)) {
+		f2fs_free_inode(&iter->tmp);
+	}
 	free(iter);
 }
