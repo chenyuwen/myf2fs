@@ -20,7 +20,7 @@ void print_hex(char *hex, int size)
 	for(i=0; i < size; i++) {
 		printf("%c%c ", buffer[(hex[i] >> 4) & 0xF],
 			buffer[hex[i] & 0xF]);
-		if(i % 16 == 15) {
+		if(i % 16 == 15 && i < (size - 1)) {
 			printf("\n");
 		}
 	}
@@ -37,7 +37,7 @@ void print_super(struct f2fs_super *super)
 	printf("\nuuid:");print_hex(&raw_super->uuid, 16);
 	printf("\ncp_blkaddr:%d", raw_super->cp_blkaddr);
 	printf("\nlog_blocks_per_seg:%d", raw_super->log_blocks_per_seg);
-	printf("\nraw_super->checksum_offset:%d", raw_super->checksum_offset);
+	printf("\nchecksum_offset:%d", raw_super->checksum_offset);
 	printf("\n");
 }
 
