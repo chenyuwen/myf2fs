@@ -46,8 +46,18 @@ void print_super(struct f2fs_super *super)
 void print_checkpoint(struct f2fs_super *super)
 {
 	struct f2fs_checkpoint *raw_cp = super->raw_cp;
+	int i = 0;
 
 	printf("checkpoint_ver: %LX", le64_to_cpu(raw_cp->checkpoint_ver));
+	for(i=0; i<3; i++) {
+		printf("\ncur_node_segno[%d][%u]", i, le32_to_cpu(raw_cp->cur_node_segno[i]));
+		printf("\ncur_node_blkof[%d][%u]", i, le16_to_cpu(raw_cp->cur_node_blkoff[i]));
+	}
+
+	for(i=0; i<3; i++) {
+		printf("\ncur_data_segno[%d][%u]", i, le32_to_cpu(raw_cp->cur_data_segno[i]));
+		printf("\ncur_data_blkof[%d][%u]", i, le16_to_cpu(raw_cp->cur_data_blkoff[i]));
+	}
 	printf("\n");
 }
 
@@ -68,6 +78,12 @@ int main(int argc, char **argv)
 	}
 
 	ret = f2fs_get_valid_checkpoint(&super);
+	if(ret < 0) {
+		f2fs_umount(&super);
+		return ret;
+	}
+
+	ret = f2fs_read_ssa(&super);
 	if(ret < 0) {
 		f2fs_umount(&super);
 		return ret;

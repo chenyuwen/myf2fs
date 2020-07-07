@@ -290,3 +290,28 @@ void dir_iter_end(struct dir_iter *iter)
 	free(iter);
 }
 
+int f2fs_read_ssa(struct f2fs_super *super)
+{
+	struct f2fs_super_block *raw_super = super->raw_super;
+	struct page *ssa_page = NULL;
+	struct f2fs_summary_block *summary = NULL;
+	int blkaddr = 0, ret;
+
+	ssa_page = alloc_page();
+	if(ssa_page == NULL) {
+		perror("alloc page");
+		return -ENOMEM;
+	}
+
+	blkaddr = raw_super->ssa_blkaddr;
+	ret = read_page(ssa_page, super->fd, blkaddr);
+	if(ret < 0) {
+		free_page(ssa_page);
+		perror("read page");
+		return -1;
+	}
+
+	summary = page_address(ssa_page);
+	printf("nat %d %d\n", blkaddr, summary->journal.n_nats);
+	return 0;
+}
