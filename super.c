@@ -247,8 +247,23 @@ void f2fs_free_inode(struct f2fs_inode *inode)
 	}
 }
 
-struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *inode,
-	struct f2fs_inode *pos)
+int f2fs_get_inode(struct f2fs_inode *inode)
+{
+	return inode->count++;
+}
+
+int f2fs_put_inode(struct f2fs_inode *inode)
+{
+	int count = 0;
+	inode->count--;
+	count = inode->count;
+	if(inode->count == 0) {
+		f2fs_free_inode(inode);
+	}
+	return count;
+}
+
+struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *inode)
 {
 	struct dir_iter *iter = NULL;
 	struct f2fs_dentry_block *dentry_block = NULL;
@@ -279,7 +294,7 @@ struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *ino
 	iter->off = 0;
 	iter->dentry = dentry_block;
 	iter->super = super;
-	iter->pos = pos;
+	iter->pos = NULL;
 	return iter;
 }
 
@@ -289,6 +304,7 @@ struct f2fs_inode *dir_iter_next(struct dir_iter *iter)
 	struct f2fs_dentry_block *dentry = iter->dentry;
 	int i = 0, byteoff = 0, bitoff = 0, ret = 0;
 	inode_t ino = 0;
+	struct f2fs_inode *tmp = NULL;
 
 	for(i=iter->off; i< SIZE_OF_DENTRY_BITMAP * BITS_PER_BYTE; i++) {
 		byteoff = i / BITS_PER_BYTE;
@@ -297,13 +313,25 @@ struct f2fs_inode *dir_iter_next(struct dir_iter *iter)
 			continue;
 		}
 
+		if(iter->pos != NULL) {
+			f2fs_put_inode(iter->pos);
+			iter->pos = NULL;
+		}
+
+		tmp = malloc(sizeof(struct f2fs_inode));
+		if(tmp == NULL) {
+			return NULL;
+		}
+
 		iter->off = i + 1;
 		ino = le32_to_cpu(dentry->dentry[i].ino);
-		ret = f2fs_read_inode(iter->super, iter->pos, ino);
+		ret = f2fs_read_inode(iter->super, tmp, ino);
 		if(ret < 0) {
 			return NULL;
 		}
-		return iter->pos;
+		iter->pos = tmp;
+		f2fs_get_inode(tmp);
+		return tmp;
 	}
 	return NULL;
 }
@@ -317,6 +345,11 @@ void dir_iter_end(struct dir_iter *iter)
 
 	page = address_to_page(iter->dentry);
 	free_page(page);
+
+	if(iter->pos != NULL) {
+		f2fs_put_inode(iter->pos);
+		iter->pos = NULL;
+	}
 	free(iter);
 }
 

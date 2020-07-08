@@ -53,7 +53,7 @@ void print_checkpoint(struct f2fs_super *super)
 
 static int path_lookup(struct f2fs_super *super, char *path)
 {
-	struct f2fs_inode *iter_pos, posbuf;
+	struct f2fs_inode *iter_pos;
 	struct f2fs_inode *found;
 	struct dir_iter *iter = NULL;
 	int next_ino = 0;
@@ -90,11 +90,16 @@ static int path_lookup(struct f2fs_super *super, char *path)
 		name[nameoff] = '\0';
 
 		printf("name:%s\n", name);
-		iter = dir_iter_start(super, found, &posbuf);
+		iter = dir_iter_start(super, found);
 		while(iter_pos = dir_iter_next(iter)) {
+			if(iter_pos == NULL) {
+				break;
+			}
 			printf("iter %s\n", iter_pos->raw_inode->i_name);
 			if(!strcmp(name, iter_pos->raw_inode->i_name)) {
 				printf("Found %s\n", name);
+				f2fs_get_inode(iter_pos);
+				found = iter_pos;
 				break;
 			}
 		}
