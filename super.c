@@ -90,8 +90,17 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 	unsigned long cpblk = le32_to_cpu(super->raw_super->cp_blkaddr);
 	struct page *cp1_page = NULL, *cp2_page = NULL;
 	struct page *cp1_bak_page = NULL, *cp2_bak_page = NULL;
-	struct f2fs_checkpoint *cp1 = NULL, *cp1_bak, *cp2 = NULL, *cp2_bak;
-	int ret = 0;
+	struct f2fs_checkpoint *cptmp1 = NULL, *cptmp2 = NULL;
+	struct f2fs_checkpoint *cp = NULL;
+	int ret = 0, cp_blocks = 0, blocksize = 0, i = 0;
+
+	blocksize = le32_to_cpu(super->raw_super->log_blocksize);
+	cp_blocks = le32_to_cpu(super->raw_super->cp_payload) + 1;
+	cp = malloc(cp_blocks * blocksize);
+	if(cp == NULL) {
+		perror("malloc");
+		return -ENOMEM;
+	}
 
 	cp1_page = alloc_page();
 	if(cp1_page == NULL) {
@@ -101,15 +110,17 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 
 	ret = read_page(cp1_page, super->fd, cpblk);
 	if(ret < 0) {
+		free(cp);
 		free_page(cp1_page);
 		perror("read page");
 		return ret;
 	}
 
-	cp1 = page_address(cp1_page);
+	cptmp1 = page_address(cp1_page);
 
 	cp2_page = alloc_page();
 	if(cp2_page == NULL) {
+		free(cp);
 		free_page(cp1_page);
 		perror("alloc page");
 		return -ENOMEM;
@@ -118,24 +129,42 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 	cpblk += 1 << le32_to_cpu(super->raw_super->log_blocks_per_seg);
 	ret = read_page(cp2_page, super->fd, cpblk);
 	if(ret < 0) {
+		free(cp);
+		free_page(cp1_page);
 		free_page(cp2_page);
 		perror("read page");
 		return ret;
 	}
 
-	cp2 = page_address(cp2_page);
+	cptmp2 = page_address(cp2_page);
 
-	if(le32_to_cpu(cp1->checkpoint_ver) >= le32_to_cpu(cp2->checkpoint_ver)) {
+	if(le32_to_cpu(cptmp1->checkpoint_ver) >= le32_to_cpu(cptmp2->checkpoint_ver)) {
 		printf("use checkpoint1\n");
-		super->raw_cp = cp1;
-		super->raw_cp_bak = cp2;
+		memcpy(cp, cptmp1, blocksize);
 		super->cp_ver = 0;
+		cpblk = le32_to_cpu(super->raw_super->cp_blkaddr);
 	} else {
 		printf("use checkpoint2\n");
-		super->raw_cp = cp2;
-		super->raw_cp_bak = cp1;
+		memcpy(cp, cptmp2, blocksize);
 		super->cp_ver = 1;
+		cpblk = cpblk;
 	}
+
+	for(i=1; i<cp_blocks; i++) {
+		ret = read_page(cp1_page, super->fd, cpblk + 1);
+		if(ret < 0) {
+			perror("read page");
+			free(cp);
+			free_page(cp1_page);
+			free_page(cp2_page);
+			return -1;
+		}
+
+		memcpy(cp + blocksize * i, page_address(cp1_page), blocksize);
+	}
+	super->raw_cp = cp;
+	free_page(cp1_page);
+	free_page(cp2_page);
 	return 0;
 }
 
