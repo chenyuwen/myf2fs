@@ -93,7 +93,8 @@ static int path_lookup(struct f2fs_super *super, char *path)
 		iter = dir_iter_start(super, found);
 		while(iter_pos = dir_iter_next(iter)) {
 			if(iter_pos == NULL) {
-				break;
+				dir_iter_end(iter);
+				return -1;
 			}
 			printf("iter %s\n", iter_pos->raw_inode->i_name);
 			if(!strcmp(name, iter_pos->raw_inode->i_name)) {

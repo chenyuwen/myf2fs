@@ -300,12 +300,18 @@ struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *ino
 
 struct f2fs_inode *dir_iter_next(struct dir_iter *iter)
 {
-	struct f2fs_inode *inode = iter->inode;
-	struct f2fs_dentry_block *dentry = iter->dentry;
+	struct f2fs_inode *inode = NULL;
+	struct f2fs_dentry_block *dentry = NULL;
 	int i = 0, byteoff = 0, bitoff = 0, ret = 0;
 	inode_t ino = 0;
 	struct f2fs_inode *tmp = NULL;
 
+	if(iter == NULL) {
+		return NULL;
+	}
+
+	inode = iter->inode;
+	dentry = iter->dentry;
 	for(i=iter->off; i< SIZE_OF_DENTRY_BITMAP * BITS_PER_BYTE; i++) {
 		byteoff = i / BITS_PER_BYTE;
 		bitoff = i % BITS_PER_BYTE;
@@ -318,7 +324,7 @@ struct f2fs_inode *dir_iter_next(struct dir_iter *iter)
 			iter->pos = NULL;
 		}
 
-		tmp = malloc(sizeof(struct f2fs_inode));
+		tmp = (void *)malloc(sizeof(struct f2fs_inode));
 		if(tmp == NULL) {
 			return NULL;
 		}
@@ -327,6 +333,7 @@ struct f2fs_inode *dir_iter_next(struct dir_iter *iter)
 		ino = le32_to_cpu(dentry->dentry[i].ino);
 		ret = f2fs_read_inode(iter->super, tmp, ino);
 		if(ret < 0) {
+			free(tmp);
 			return NULL;
 		}
 		iter->pos = tmp;
