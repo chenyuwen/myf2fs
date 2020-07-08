@@ -92,10 +92,6 @@ static int path_lookup(struct f2fs_super *super, char *path)
 		printf("name:%s\n", name);
 		iter = dir_iter_start(super, found);
 		while(iter_pos = dir_iter_next(iter)) {
-			if(iter_pos == NULL) {
-				dir_iter_end(iter);
-				return -1;
-			}
 			printf("iter %s\n", iter_pos->raw_inode->i_name);
 			if(!strcmp(name, iter_pos->raw_inode->i_name)) {
 				printf("Found %s\n", name);
