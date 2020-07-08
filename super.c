@@ -160,7 +160,7 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 
 	byteoff = ino / 8;
 	bitoff = ino % 8;
-	if(!(super->nat_bitmap->bitmap[byteoff] & (1 << bitoff))) {
+	if(!(super->nat_bitmap[byteoff] & (1 << bitoff))) {
 		printf("here\n");
 		blkaddr += blocks_per_seg;
 	}
@@ -373,10 +373,10 @@ int f2fs_read_ssa(struct f2fs_super *super)
 	return 0;
 }
 
-int f2fs_build_nat_bitmap(struct f2fs_super *super)
+static int __get_free_nat_bitmaps(struct f2fs_super *super)
 {
 	unsigned long nat_bits_blocks = 0;
-	struct f2fs_nat_bitmap *nat_bitmap = NULL;
+	struct f2fs_nat_bitmap *nat_bits = NULL;
 	unsigned int nat_bits_bytes = 0;
 	unsigned int nat_segs = 0;
 	block_t nat_bits_addr = 0;
@@ -393,8 +393,8 @@ int f2fs_build_nat_bitmap(struct f2fs_super *super)
 
 	printf("bits_size:%lu, addr%llu\n", nat_bits_blocks << F2FS_BLKSIZE_BITS,
 		nat_bits_addr);
-	nat_bitmap = (void *)malloc(nat_bits_blocks << F2FS_BLKSIZE_BITS);
-	if(nat_bitmap == NULL) {
+	nat_bits = (void *)malloc(nat_bits_blocks << F2FS_BLKSIZE_BITS);
+	if(nat_bits == NULL) {
 		perror("malloc");
 		return -ENOMEM;
 	}
@@ -402,24 +402,49 @@ int f2fs_build_nat_bitmap(struct f2fs_super *super)
 	page = alloc_page();
 	if(page == NULL) {
 		perror("alloc_page");
-		free(nat_bitmap);
+		free(nat_bits);
 		return -ENOMEM;
 	}
 
 	for(i=0; i<nat_bits_blocks; i++) {
 		ret = read_page(page, super->fd, nat_bits_addr++);
 		if(ret < 0) {
-			free(nat_bitmap);
+			free(nat_bits);
 			goto out;
 		}
 
-		memcpy(nat_bitmap + (i << F2FS_BLKSIZE_BITS),
+		memcpy(nat_bits + (i << F2FS_BLKSIZE_BITS),
 			page_address(page), F2FS_BLKSIZE);
 	}
-	super->nat_bitmap = nat_bitmap;
-	print_hex(super->nat_bitmap, 40);
+	super->nat_bits = nat_bits;
+	print_hex(super->nat_bits, 40);
 
 out:
 	free_page(page);
 	return ret;
 }
+
+int f2fs_build_nat_bitmap(struct f2fs_super *super)
+{
+	struct f2fs_checkpoint *raw_cp = super->raw_cp;
+	int ret = 0, offset = 0;
+	char *bitmap = NULL;
+
+	ret = __get_free_nat_bitmaps(super);
+	if(ret < 0) {
+		return ret;
+	}
+
+	if(is_set_ckpt_flags(raw_cp, CP_LARGE_NAT_BITMAP_FLAG)) {
+		bitmap = raw_cp->sit_nat_version_bitmap + sizeof(__le32);
+	}
+
+	if(super->raw_super->cp_payload) {
+		bitmap = raw_cp->sit_nat_version_bitmap;
+	} else {
+		offset = le32_to_cpu(raw_cp->sit_ver_bitmap_bytesize);
+		bitmap = raw_cp->sit_nat_version_bitmap + offset;
+	}
+	return 0;
+}
+

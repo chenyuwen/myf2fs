@@ -18,7 +18,8 @@ struct f2fs_super {
 	block_t nat_blocks;
 	struct f2fs_super_block *raw_super, *raw_super_bak;
 	struct f2fs_checkpoint *raw_cp, *raw_cp_bak;
-	struct f2fs_nat_bitmap *nat_bitmap;
+	struct f2fs_nat_bitmap *nat_bits;
+	char *nat_bitmap;
 };
 
 #define F2FS_FEATURE_ENCRYPT            0x0001
