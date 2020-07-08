@@ -193,7 +193,6 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 		printf("here\n");
 		blkaddr += blocks_per_seg;
 	}
-	print_hex((void *)super->nat_bitmap, 40);
 
 	printf("[%lu]:%lu\n", ino, blkaddr);
 	ret = read_page(nat_page, super->fd, blkaddr);
@@ -248,7 +247,8 @@ void f2fs_free_inode(struct f2fs_inode *inode)
 	}
 }
 
-struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *inode)
+struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *inode,
+	struct f2fs_inode *pos)
 {
 	struct dir_iter *iter = NULL;
 	struct f2fs_dentry_block *dentry_block = NULL;
@@ -279,6 +279,7 @@ struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *ino
 	iter->off = 0;
 	iter->dentry = dentry_block;
 	iter->super = super;
+	iter->pos = pos;
 	return iter;
 }
 
@@ -298,14 +299,11 @@ struct f2fs_inode *dir_iter_next(struct dir_iter *iter)
 
 		iter->off = i + 1;
 		ino = le32_to_cpu(dentry->dentry[i].ino);
-		if(f2fs_is_vaild_inode(&iter->tmp)) {
-			f2fs_free_inode(&iter->tmp);
-		}
-		ret = f2fs_read_inode(iter->super, &iter->tmp, ino);
+		ret = f2fs_read_inode(iter->super, iter->pos, ino);
 		if(ret < 0) {
 			return NULL;
 		}
-		return &iter->tmp;
+		return iter->pos;
 	}
 	return NULL;
 }
@@ -319,10 +317,6 @@ void dir_iter_end(struct dir_iter *iter)
 
 	page = address_to_page(iter->dentry);
 	free_page(page);
-
-	if(f2fs_is_vaild_inode(&iter->tmp)) {
-		f2fs_free_inode(&iter->tmp);
-	}
 	free(iter);
 }
 
@@ -474,6 +468,8 @@ int f2fs_build_nat_bitmap(struct f2fs_super *super)
 		offset = le32_to_cpu(raw_cp->sit_ver_bitmap_bytesize);
 		bitmap = raw_cp->sit_nat_version_bitmap + offset;
 	}
+
+	super->nat_bitmap = bitmap;
 	return 0;
 }
 

@@ -12,6 +12,13 @@ struct f2fs_nat_bitmap {
 	char bitmap[1];
 } __pack;
 
+struct f2fs_inode {
+	inode_t ino;
+	int count;
+	struct f2fs_nat_block *nat_block;
+	struct f2fs_raw_inode *raw_inode;
+};
+
 struct f2fs_super {
 	int fd;
 	int cp_ver;
@@ -20,6 +27,7 @@ struct f2fs_super {
 	struct f2fs_checkpoint *raw_cp, *raw_cp_bak;
 	struct f2fs_nat_bitmap *nat_bits;
 	char *nat_bitmap;
+	struct f2fs_inode root_inode;
 };
 
 #define F2FS_FEATURE_ENCRYPT            0x0001
@@ -59,9 +67,4 @@ static inline block_t start_sum_block(struct f2fs_super *super)
 		le32_to_cpu(super->raw_cp->cp_pack_start_sum);
 }
 
-struct f2fs_inode {
-	inode_t ino;
-	struct f2fs_nat_block *nat_block;
-	struct f2fs_raw_inode *raw_inode;
-};
 #endif /*__F2FS_H__*/

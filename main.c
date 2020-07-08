@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <sys/stat.h>
+#include <string.h>
 #include "f2fs.h"
 #include "super.h"
 #include "utils.h"
@@ -50,11 +51,63 @@ void print_checkpoint(struct f2fs_super *super)
 	printf("\n");
 }
 
+static int path_lookup(struct f2fs_super *super, char *path)
+{
+	struct f2fs_inode *iter_pos, posbuf;
+	struct f2fs_inode *found;
+	struct dir_iter *iter = NULL;
+	int next_ino = 0;
+	char name[256];
+	int i = 0, nameoff = 0;
+
+	if(path[0] != '/') {
+		printf("Not supported path:%s\n", path);
+		return 0;
+	}
+
+	found = &super->root_inode;
+	while(1) {
+		nameoff = 0;
+		name[0] = '\0';
+
+		/* skip // */
+		for(; path[i]!='\0'; i++) {
+			if(path[i] != '/') {
+				break;
+			}
+		}
+
+		for(; path[i]!='\0'; i++) {
+			if(path[i] == '/' || path[i] == '\0') {
+				break;
+			}
+			name[nameoff++] = path[i];
+		}
+
+		if(nameoff == 0) {
+			goto out;
+		}
+		name[nameoff] = '\0';
+
+		printf("name:%s\n", name);
+		iter = dir_iter_start(super, found, &posbuf);
+		while(iter_pos = dir_iter_next(iter)) {
+			printf("iter %s\n", iter_pos->raw_inode->i_name);
+			if(!strcmp(name, iter_pos->raw_inode->i_name)) {
+				printf("Found %s\n", name);
+				break;
+			}
+		}
+		dir_iter_end(iter);
+	}
+
+out:
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	struct f2fs_super super;
-	struct f2fs_inode root_inode, *iter_pos;
-	struct dir_iter *iter = NULL;
 	int ret = 0;
 
 	if(argc <= 1) {
@@ -87,20 +140,16 @@ int main(int argc, char **argv)
 	print_super(&super);
 	print_checkpoint(&super);
 
-	f2fs_read_inode(&super, &root_inode, le32_to_cpu(super.raw_super->root_ino));
-	printf("%d\n", root_inode.raw_inode->i_mode);
-	if(!S_ISDIR(le32_to_cpu(root_inode.raw_inode->i_mode))) {
-		f2fs_free_inode(&root_inode);
+	f2fs_read_inode(&super, &super.root_inode, le32_to_cpu(super.raw_super->root_ino));
+	printf("%d\n", super.root_inode.raw_inode->i_mode);
+	if(!S_ISDIR(le32_to_cpu(super.root_inode.raw_inode->i_mode))) {
+		f2fs_free_inode(&super.root_inode);
 		f2fs_umount(&super);
 		printf("Error: the root was not a dir.\n");
 		return ret;
 	}
 
-	iter = dir_iter_start(&super, &root_inode);
-	while(iter_pos = dir_iter_next(iter)) {
-		printf("iter %s\n", iter_pos->raw_inode->i_name);
-	}
-	dir_iter_end(iter);
+	path_lookup(&super, "/dir1/file1");
 
 	f2fs_umount(&super);
 	return 0;
