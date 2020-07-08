@@ -2,6 +2,7 @@
 #include <sys/stat.h>
 #include "f2fs.h"
 #include "super.h"
+#include "utils.h"
 
 void usage()
 {
@@ -13,20 +14,6 @@ void usage()
 	printf("f2fs dev mkdir [dir]\n");
 	printf("f2fs dev rm [file]\n");
 	printf("f2fs dev touch [file]\n");
-}
-
-void print_hex(void *hex, int size)
-{
-	int i = 0;
-	char *tmp = hex;
-	static const char buffer[] = "0123456789ABCDEF";
-	for(i=0; i < size; i++) {
-		printf("%c%c ", buffer[(tmp[i] >> 4) & 0xF],
-			buffer[tmp[i] & 0xF]);
-		if(i % 16 == 15 && i < (size - 1)) {
-			printf("\n");
-		}
-	}
 }
 
 void print_super(struct f2fs_super *super)
@@ -52,11 +39,13 @@ void print_checkpoint(struct f2fs_super *super)
 	for(i=0; i<3; i++) {
 		printf("\ncur_node_segno[%d][%u]", i, le32_to_cpu(raw_cp->cur_node_segno[i]));
 		printf("\ncur_node_blkof[%d][%u]", i, le16_to_cpu(raw_cp->cur_node_blkoff[i]));
+		printf("\nalloc_type[%d][%u]", i, le16_to_cpu(raw_cp->alloc_type[i]));
 	}
 
 	for(i=0; i<3; i++) {
 		printf("\ncur_data_segno[%d][%u]", i, le32_to_cpu(raw_cp->cur_data_segno[i]));
 		printf("\ncur_data_blkof[%d][%u]", i, le16_to_cpu(raw_cp->cur_data_blkoff[i]));
+		printf("\nalloc_type[%d][%u]", i, le16_to_cpu(raw_cp->alloc_type[i + 8]));
 	}
 	printf("\n");
 }
@@ -78,6 +67,12 @@ int main(int argc, char **argv)
 	}
 
 	ret = f2fs_get_valid_checkpoint(&super);
+	if(ret < 0) {
+		f2fs_umount(&super);
+		return ret;
+	}
+
+	ret = f2fs_build_nat_bitmap(&super);
 	if(ret < 0) {
 		f2fs_umount(&super);
 		return ret;

@@ -9,13 +9,13 @@
 #include "f2fs.h"
 #include "crc32.h"
 #include "super.h"
+#include "utils.h"
 
-void print_hex(void *hex, int size);
 int f2fs_fill_super(struct f2fs_super *super, char *devpath)
 {
 	struct f2fs_super_block *raw_super = NULL;
 	struct page *sp1;
-	int ret = 0, cp_ver = 0;
+	int ret = 0, super_ver = 0;
 	unsigned int crc = 0;
 	size_t crc_offset = 0;
 	super->fd = open(devpath, O_RDWR);
@@ -31,18 +31,18 @@ int f2fs_fill_super(struct f2fs_super *super, char *devpath)
 	}
 
 retry:
-	if(cp_ver >= 2) {
+	if(super_ver >= 2) {
 		free_page(sp1);
 		return -1;
 	}
 
-	ret = read_page(sp1, super->fd, cp_ver);
+	ret = read_page(sp1, super->fd, super_ver);
 	if(ret < 0) {
 		free_page(sp1);
 		perror("read_page");
 		return ret;
 	}
-	cp_ver++;
+	super_ver++;
 
 	raw_super = (void *)((char *)page_address(sp1) + F2FS_SUPER_OFFSET);
 	if(le32_to_cpu(raw_super->magic) != F2FS_SUPER_MAGIC) {
@@ -126,11 +126,15 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 	cp2 = page_address(cp2_page);
 
 	if(le32_to_cpu(cp1->checkpoint_ver) >= le32_to_cpu(cp2->checkpoint_ver)) {
+		printf("use checkpoint1\n");
 		super->raw_cp = cp1;
 		super->raw_cp_bak = cp2;
+		super->cp_ver = 0;
 	} else {
+		printf("use checkpoint2\n");
 		super->raw_cp = cp2;
 		super->raw_cp_bak = cp1;
+		super->cp_ver = 1;
 	}
 	return 0;
 }
@@ -141,7 +145,7 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	struct f2fs_nat_block *nat = NULL;
 	struct f2fs_raw_inode *raw_inode;
 	int ret = 0, byteoff = 0, bitoff = 0;
-	unsigned long blkaddr = 0, tmpaddr;
+	unsigned long blkaddr = 0, tmpaddr, blocks_per_seg = 0;
 
 	nat_page = alloc_page();
 	if(nat_page == NULL) {
@@ -150,14 +154,17 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	}
 
 	tmpaddr = ((unsigned long)ino / NAT_ENTRY_PER_BLOCK);
-	blkaddr = le32_to_cpu(super->raw_super->nat_blkaddr) + tmpaddr + (tmpaddr) * 2;
+	blocks_per_seg = 1 << le32_to_cpu(super->raw_super->log_blocks_per_seg);
+	blkaddr = le32_to_cpu(super->raw_super->nat_blkaddr) + (tmpaddr / blocks_per_seg) *
+			blocks_per_seg * 2 + tmpaddr % blocks_per_seg;
 
 	byteoff = ino / 8;
 	bitoff = ino % 8;
-	if(super->raw_cp->sit_nat_version_bitmap[byteoff] & (1 << bitoff)) {
+	if(!(super->nat_bitmap->bitmap[byteoff] & (1 << bitoff))) {
 		printf("here\n");
-		blkaddr++;
+		blkaddr += blocks_per_seg;
 	}
+	print_hex((void *)super->nat_bitmap, 40);
 
 	printf("[%lu]:%lu\n", ino, blkaddr);
 	ret = read_page(nat_page, super->fd, blkaddr);
@@ -292,10 +299,20 @@ void dir_iter_end(struct dir_iter *iter)
 
 int f2fs_read_ssa(struct f2fs_super *super)
 {
+#if 0
 	struct f2fs_super_block *raw_super = super->raw_super;
+	struct f2fs_checkpoint *raw_cp = super->raw_cp;
 	struct page *ssa_page = NULL;
-	struct f2fs_summary_block *summary = NULL;
-	int blkaddr = 0, ret;
+	struct f2fs_summary *summary = NULL;
+	struct f2fs_journal *journal = NULL;
+	struct f2fs_summary_block *summary_block = NULL;
+	block_t blkaddr = 0;
+	int ret  = 0, i = 0, j = 0;
+
+	if(!is_set_ckpt_flags(raw_cp, CP_COMPACT_SUM_FLAG)) {
+		printf("TODO:");
+		return -1;
+	}
 
 	ssa_page = alloc_page();
 	if(ssa_page == NULL) {
@@ -303,7 +320,7 @@ int f2fs_read_ssa(struct f2fs_super *super)
 		return -ENOMEM;
 	}
 
-	blkaddr = raw_super->ssa_blkaddr;
+	blkaddr = start_sum_block(super);
 	ret = read_page(ssa_page, super->fd, blkaddr);
 	if(ret < 0) {
 		free_page(ssa_page);
@@ -311,7 +328,98 @@ int f2fs_read_ssa(struct f2fs_super *super)
 		return -1;
 	}
 
-	summary = page_address(ssa_page);
-	printf("nat %d %d\n", blkaddr, summary->journal.n_nats);
+	summary = page_address(ssa_page) + SUM_JOURNAL_SIZE * 2;
+
+	for(i=0; i<le32_to_cpu(raw_cp->cur_data_blkoff[0]); i++) {
+		printf("%d %d %d\n", summary[i].nid, summary[i].version, summary[i].ofs_in_node);
+	}
+
+	journal = page_address(ssa_page);
+	printf("sum: %d\n", journal->n_nats);
+	for(i=0; i<NAT_JOURNAL_ENTRIES; i++) {
+		printf("nat %d %d %d %d\n",
+			journal->nat_j.entries[i].nid,
+			journal->nat_j.entries[i].ne.version,
+			journal->nat_j.entries[i].ne.ino,
+			journal->nat_j.entries[i].ne.block_addr);
+	}
+
+	journal = page_address(ssa_page) + SUM_JOURNAL_SIZE;
+	printf("sum: %d\n", journal->n_sits);
+	for(i=0; i<SIT_JOURNAL_ENTRIES; i++) {
+		printf("sit %d %d %d\n",
+			journal->sit_j.entries[i].segno,
+			journal->sit_j.entries[i].se.vblocks,
+			journal->sit_j.entries[i].se.mtime);
+	}
+
+	for(j=0; j<3; j++) {
+		blkaddr = (raw_super->ssa_blkaddr + raw_cp->cur_node_segno[j]);
+		ret = read_page(ssa_page, super->fd, blkaddr);
+		summary_block = page_address(ssa_page);
+		printf("segno:%d addr:%lu node%d sum: %d\n", raw_cp->cur_node_segno[j],
+			blkaddr, j, summary_block->journal.n_nats);
+		for(i=0; i<summary_block->journal.n_nats; i++) {
+			journal = &summary_block->journal;
+			printf("node nat %d %d %d %d\n",
+				journal->nat_j.entries[i].nid,
+				journal->nat_j.entries[i].ne.version,
+				journal->nat_j.entries[i].ne.ino,
+				journal->nat_j.entries[i].ne.block_addr);
+		}
+	}
+#endif
+
 	return 0;
+}
+
+int f2fs_build_nat_bitmap(struct f2fs_super *super)
+{
+	unsigned long nat_bits_blocks = 0;
+	struct f2fs_nat_bitmap *nat_bitmap = NULL;
+	unsigned int nat_bits_bytes = 0;
+	unsigned int nat_segs = 0;
+	block_t nat_bits_addr = 0;
+	struct page *page = NULL;
+	int ret = 0, i = 0;
+
+	nat_segs = le32_to_cpu(super->raw_super->segment_count_nat) >> 1;
+	super->nat_blocks = nat_segs << le32_to_cpu(super->raw_super->log_blocks_per_seg);
+	nat_bits_bytes = super->nat_blocks / BITS_PER_BYTE;
+	nat_bits_blocks = F2FS_BLK_ALIGN((nat_bits_bytes >> 1) + 8);
+	nat_bits_addr = __start_cp_addr(super) +
+		(1 << le32_to_cpu(super->raw_super->log_blocks_per_seg)) -
+		nat_bits_blocks;
+
+	printf("bits_size:%lu, addr%llu\n", nat_bits_blocks << F2FS_BLKSIZE_BITS,
+		nat_bits_addr);
+	nat_bitmap = (void *)malloc(nat_bits_blocks << F2FS_BLKSIZE_BITS);
+	if(nat_bitmap == NULL) {
+		perror("malloc");
+		return -ENOMEM;
+	}
+
+	page = alloc_page();
+	if(page == NULL) {
+		perror("alloc_page");
+		free(nat_bitmap);
+		return -ENOMEM;
+	}
+
+	for(i=0; i<nat_bits_blocks; i++) {
+		ret = read_page(page, super->fd, nat_bits_addr++);
+		if(ret < 0) {
+			free(nat_bitmap);
+			goto out;
+		}
+
+		memcpy(nat_bitmap + (i << F2FS_BLKSIZE_BITS),
+			page_address(page), F2FS_BLKSIZE);
+	}
+	super->nat_bitmap = nat_bitmap;
+	print_hex(super->nat_bitmap, 40);
+
+out:
+	free_page(page);
+	return ret;
 }

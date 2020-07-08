@@ -6,6 +6,8 @@ typedef unsigned char __u8;
 typedef unsigned short __le16;
 typedef unsigned int __le32;
 typedef unsigned long long __le64;
+typedef unsigned long inode_t;
+typedef unsigned long long block_t;
 
 #define __packed __attribute__((packed))
 
