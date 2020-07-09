@@ -51,41 +51,65 @@ void print_checkpoint(struct f2fs_super *super)
 	printf("\n");
 }
 
-static int path_lookup(struct f2fs_super *super, char *path)
+static int f2fs_free_path(struct f2fs_super *super, struct path *path)
+{
+	struct path *next = path, *tmp;
+
+	do {
+		//printf("free:%s\n", next->inode->raw_inode->i_name);
+		f2fs_put_inode(next->inode);
+		tmp = next;
+		next = next->next;
+		free(tmp);
+	} while(next != path);
+
+	return 0;
+}
+
+static struct path *path_lookup(struct f2fs_super *super, char *dir)
 {
 	struct f2fs_inode *iter_pos;
-	struct f2fs_inode *found;
 	struct dir_iter *iter = NULL;
 	int next_ino = 0;
 	char name[256];
-	int i = 0, nameoff = 0;
+	int i = 0, nameoff = 0, found = 0;
+	struct path *path, *tmp, *new;
 
-	if(path[0] != '/') {
-		printf("Not supported path:%s\n", path);
-		return 0;
+	if(dir[0] != '/') {
+		printf("Not supported path:%s\n", dir);
+		return NULL;
 	}
 
-	found = &super->root_inode;
+	path = (void *)malloc(sizeof(struct path));
+	if(path == NULL) {
+		perror("malloc");
+		return NULL;
+	}
+
+	path->next = path;
+	path->prev = path;
+	f2fs_get_inode(super->root);
+	path->inode = super->root;
 	while(1) {
 		nameoff = 0;
 		name[0] = '\0';
 
 		/* skip // */
-		for(; path[i]!='\0'; i++) {
-			if(path[i] != '/') {
+		for(; dir[i]!='\0'; i++) {
+			if(dir[i] != '/') {
 				break;
 			}
 		}
 
-		for(; path[i]!='\0'; i++) {
-			if(path[i] == '/' || path[i] == '\0') {
+		for(; dir[i]!='\0'; i++) {
+			if(dir[i] == '/' || dir[i] == '\0') {
 				break;
 			}
-			name[nameoff++] = path[i];
+			name[nameoff++] = dir[i];
 		}
 
 		if(nameoff == 0) {
-			goto out;
+			break;
 		}
 		name[nameoff] = '\0';
 
@@ -95,28 +119,46 @@ static int path_lookup(struct f2fs_super *super, char *path)
 
 		/*TODO: ..*/
 
-		iter = dir_iter_start(super, found);
+		found = 0;
+		iter = dir_iter_start(super, path->prev->inode);
 		while(iter_pos = dir_iter_next(iter)) {
-			printf("Iter:%s filename: %s\n", found->raw_inode->i_name,
-				iter_pos->raw_inode->i_name);
 			if(!strcmp(name, iter_pos->raw_inode->i_name)) {
-				printf("Found %s\n", name);
+				new = (void *)malloc(sizeof(struct path));
+				if(new == NULL) {
+					dir_iter_end(iter);
+					goto out;
+				}
 				f2fs_get_inode(iter_pos);
-				found = iter_pos;
+				new->inode = iter_pos;
+				new->next = path->prev->next;
+				new->prev = path->prev;
+
+				path->prev->next = new;
+				path->prev = new;
+				found = 1;
 				break;
 			}
 		}
 		dir_iter_end(iter);
+
+		if(found == 0) {
+			goto out;
+		}
 	}
+	return path;
 
 out:
-	return 0;
+	f2fs_free_path(super, path);
+	return NULL;
 }
 
 int main(int argc, char **argv)
 {
 	struct f2fs_super super;
+	struct dir_iter *iter;
 	int ret = 0;
+	struct f2fs_inode *pos = NULL;
+	struct path *path = NULL;
 
 	if(argc <= 2) {
 		return -1;
@@ -147,18 +189,46 @@ int main(int argc, char **argv)
 
 //	print_super(&super);
 //	print_checkpoint(&super);
-
-	f2fs_read_inode(&super, &super.root_inode, le32_to_cpu(super.raw_super->root_ino));
-	printf("%d\n", super.root_inode.raw_inode->i_mode);
-	if(!S_ISDIR(le32_to_cpu(super.root_inode.raw_inode->i_mode))) {
-		f2fs_free_inode(&super.root_inode);
+	super.root = (void *)malloc(sizeof(struct f2fs_inode));
+	if(super.root == NULL) {
 		f2fs_umount(&super);
-		printf("Error: the root was not a dir.\n");
 		return ret;
 	}
 
-	path_lookup(&super, argv[2]);
+	f2fs_read_inode(&super, super.root, le32_to_cpu(super.raw_super->root_ino));
+	f2fs_get_inode(super.root);
+	if(!S_ISDIR(le32_to_cpu(super.root->raw_inode->i_mode))) {
+		printf("Error: the root was not a dir.\n");
+		f2fs_put_inode(super.root);
+		f2fs_umount(&super);
+		return ret;
+	}
 
+	path = path_lookup(&super, argv[2]);
+	if(path == NULL) {
+		printf("No such file or directory:%s\n", argv[2]);
+		f2fs_put_inode(super.root);
+		f2fs_umount(&super);
+		return -1;
+	}
+
+	if(S_ISDIR(le32_to_cpu(path->prev->inode->raw_inode->i_mode))) {
+		printf("DIR : .\nDIR : ..\n");
+
+		iter = dir_iter_start(&super, path->prev->inode);
+		while(pos = dir_iter_next(iter)) {
+			if(S_ISDIR(le32_to_cpu(pos->raw_inode->i_mode))) {
+				printf("DIR : %s\n", pos->raw_inode->i_name);
+			} else {
+				printf("FILE: %s\n", pos->raw_inode->i_name);
+			}
+		}
+		dir_iter_end(iter);
+	} else {
+		printf("FILE: %s\n", path->prev->inode->raw_inode->i_name);
+	}
+
+	f2fs_free_path(&super, path);
 	f2fs_umount(&super);
 	return 0;
 }

@@ -51,7 +51,7 @@ retry:
 	}
 
 	if(!F2FS_HAS_FEATURE(raw_super, F2FS_FEATURE_SB_CHKSUM)) {
-		printf("skip crc.\n");
+//		printf("skip crc.\n");
 		goto out;
 	}
 
@@ -139,12 +139,12 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 	cptmp2 = page_address(cp2_page);
 
 	if(le32_to_cpu(cptmp1->checkpoint_ver) >= le32_to_cpu(cptmp2->checkpoint_ver)) {
-		printf("use checkpoint1\n");
+//		printf("use checkpoint1\n");
 		memcpy(cp, cptmp1, blocksize);
 		super->cp_ver = 0;
 		cpblk = le32_to_cpu(super->raw_super->cp_blkaddr);
 	} else {
-		printf("use checkpoint2\n");
+//		printf("use checkpoint2\n");
 		memcpy(cp, cptmp2, blocksize);
 		super->cp_ver = 1;
 		cpblk = cpblk;
@@ -193,7 +193,6 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 		blkaddr += blocks_per_seg;
 	}
 
-	printf("[%lu]:%lu\n", ino, blkaddr);
 	ret = read_page(nat_page, super->fd, blkaddr);
 	if(ret < 0) {
 		free_page(nat_page);
@@ -252,6 +251,7 @@ int f2fs_put_inode(struct f2fs_inode *inode)
 	count = inode->count;
 	if(inode->count == 0) {
 		f2fs_free_inode(inode);
+		free(inode);
 	}
 	return count;
 }
@@ -298,7 +298,7 @@ struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *ino
 	}
 
 	iter->inode = inode;
-	iter->off = 0;
+	iter->off = 2;
 	iter->dentry_block = dentry_block;
 	iter->super = super;
 	iter->pos = NULL;

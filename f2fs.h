@@ -27,7 +27,7 @@ struct f2fs_super {
 	struct f2fs_checkpoint *raw_cp, *raw_cp_bak;
 	struct f2fs_nat_bitmap *nat_bits;
 	char *nat_bitmap;
-	struct f2fs_inode root_inode;
+	struct f2fs_inode *root;
 };
 
 #define F2FS_FEATURE_ENCRYPT            0x0001

@@ -15,6 +15,11 @@ struct dir_iter {
 	struct f2fs_dir_entry *dentry;
 };
 
+struct path {
+	struct path *next, *prev;
+	struct f2fs_inode *inode;
+};
+
 static inline int f2fs_is_vaild_inode(struct f2fs_inode *inode)
 {
 	if(inode == NULL) {
