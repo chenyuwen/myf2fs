@@ -23,8 +23,8 @@ struct f2fs_super {
 	int fd;
 	int cp_ver;
 	block_t nat_blocks;
-	struct f2fs_super_block *raw_super, *raw_super_bak;
-	struct f2fs_checkpoint *raw_cp, *raw_cp_bak;
+	struct f2fs_super_block *raw_super;
+	struct f2fs_checkpoint *raw_cp;
 	struct f2fs_nat_bitmap *nat_bits;
 	char *nat_bitmap;
 	struct f2fs_inode *root;

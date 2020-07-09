@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include "f2fs_type.h"
 
 #define F2FS_PAGE_SIZE 4096
 
@@ -23,12 +24,12 @@ static inline struct page *address_to_page(void *address)
 
 static inline struct page *alloc_page()
 {
-	return (void *)malloc(F2FS_PAGE_SIZE);
+	return (void *)f2fs_malloc(F2FS_PAGE_SIZE);
 }
 
 static inline void free_page(struct page *page)
 {
-	free(page_address(page));
+	f2fs_free(page_address(page));
 }
 
 static inline int read_page(struct page *page, int fd, int sector)

@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <string.h>
+#include "f2fs_type.h"
 #include "f2fs.h"
 #include "super.h"
 #include "utils.h"
 
+int malloc_count = 0;
 void usage()
 {
 	printf("f2fs dev super\n");
@@ -60,7 +62,7 @@ static int f2fs_free_path(struct f2fs_super *super, struct path *path)
 		f2fs_put_inode(next->inode);
 		tmp = next;
 		next = next->next;
-		free(tmp);
+		f2fs_free(tmp);
 	} while(next != path);
 
 	return 0;
@@ -79,7 +81,7 @@ static struct path *path_lookup(struct f2fs_super *super, char *dir)
 		return NULL;
 	}
 
-	path = (void *)malloc(sizeof(struct path));
+	path = (void *)f2fs_malloc(sizeof(struct path));
 	if(path == NULL) {
 		perror("malloc");
 		return NULL;
@@ -127,7 +129,7 @@ static struct path *path_lookup(struct f2fs_super *super, char *dir)
 			tmp->prev->next = path;
 			path->prev = tmp->prev;
 			f2fs_put_inode(tmp->inode);
-			free(tmp);
+			f2fs_free(tmp);
 			continue;
 		}
 
@@ -135,7 +137,7 @@ static struct path *path_lookup(struct f2fs_super *super, char *dir)
 		iter = dir_iter_start(super, path->prev->inode);
 		while(iter_pos = dir_iter_next(iter)) {
 			if(!strcmp(name, iter_pos->raw_inode->i_name)) {
-				new = (void *)malloc(sizeof(struct path));
+				new = (void *)f2fs_malloc(sizeof(struct path));
 				if(new == NULL) {
 					dir_iter_end(iter);
 					goto out;
@@ -183,45 +185,37 @@ int main(int argc, char **argv)
 
 	ret = f2fs_get_valid_checkpoint(&super);
 	if(ret < 0) {
-		f2fs_umount(&super);
-		return ret;
+		goto umount;
 	}
 
 	ret = f2fs_build_nat_bitmap(&super);
 	if(ret < 0) {
-		f2fs_umount(&super);
-		return ret;
+		goto umount;
 	}
 
 	ret = f2fs_read_ssa(&super);
 	if(ret < 0) {
-		f2fs_umount(&super);
-		return ret;
+		goto umount;
 	}
 
 //	print_super(&super);
 //	print_checkpoint(&super);
-	super.root = (void *)malloc(sizeof(struct f2fs_inode));
+	super.root = (void *)f2fs_malloc(sizeof(struct f2fs_inode));
 	if(super.root == NULL) {
-		f2fs_umount(&super);
-		return ret;
+		ret = -1;
+		goto umount;
 	}
 
 	f2fs_read_inode(&super, super.root, le32_to_cpu(super.raw_super->root_ino));
-	f2fs_get_inode(super.root);
 	if(!S_ISDIR(le32_to_cpu(super.root->raw_inode->i_mode))) {
 		printf("Error: the root was not a dir.\n");
-		f2fs_put_inode(super.root);
-		f2fs_umount(&super);
-		return ret;
+		goto free_root;
 	}
 
 	path = path_lookup(&super, argv[2]);
 	if(path == NULL) {
 		printf("No such file or directory:%s\n", argv[2]);
-		f2fs_put_inode(super.root);
-		f2fs_umount(&super);
-		return -1;
+		goto free_root;
 	}
 
 	if(S_ISDIR(le32_to_cpu(path->prev->inode->raw_inode->i_mode))) {
@@ -241,6 +235,13 @@ int main(int argc, char **argv)
 	}
 
 	f2fs_free_path(&super, path);
+free_root:
+	f2fs_put_inode(super.root);
+umount:
 	f2fs_umount(&super);
-	return 0;
+out:
+	if(malloc_count != 0) {
+		BUG("BUG: The memory malloc count: %d\n", malloc_count);
+	}
+	return ret;
 }

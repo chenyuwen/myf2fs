@@ -18,6 +18,8 @@ int f2fs_fill_super(struct f2fs_super *super, char *devpath)
 	int ret = 0, super_ver = 0;
 	unsigned int crc = 0;
 	size_t crc_offset = 0;
+
+	memset(super, 0, sizeof(struct f2fs_super));
 	super->fd = open(devpath, O_RDWR);
 	if(super->fd < 0) {
 		perror("open");
@@ -76,12 +78,19 @@ out:
 
 int f2fs_umount(struct f2fs_super *super)
 {
-	struct page *sp_page = NULL;
+	struct page *page = NULL;
 
-	sp_page = address_to_page((char *)super->raw_super - F2FS_SUPER_OFFSET);
-	free_page(sp_page);
+	if(super->raw_cp) {
+		f2fs_free(super->raw_cp);
+	}
 
-	/*TODO*/
+	if(super->nat_bits) {
+		f2fs_free(super->nat_bits);
+	}
+
+	page = address_to_page((char *)super->raw_super - F2FS_SUPER_OFFSET);
+	free_page(page);
+	super->raw_super = NULL;
 	return 0;
 }
 
@@ -96,9 +105,9 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 
 	blocksize = le32_to_cpu(super->raw_super->log_blocksize);
 	cp_blocks = le32_to_cpu(super->raw_super->cp_payload) + 1;
-	cp = malloc(cp_blocks * blocksize);
+	cp = f2fs_malloc(cp_blocks * blocksize);
 	if(cp == NULL) {
-		perror("malloc");
+		perror("f2fs_malloc");
 		return -ENOMEM;
 	}
 
@@ -110,7 +119,7 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 
 	ret = read_page(cp1_page, super->fd, cpblk);
 	if(ret < 0) {
-		free(cp);
+		f2fs_free(cp);
 		free_page(cp1_page);
 		perror("read page");
 		return ret;
@@ -120,7 +129,7 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 
 	cp2_page = alloc_page();
 	if(cp2_page == NULL) {
-		free(cp);
+		f2fs_free(cp);
 		free_page(cp1_page);
 		perror("alloc page");
 		return -ENOMEM;
@@ -129,7 +138,7 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 	cpblk += 1 << le32_to_cpu(super->raw_super->log_blocks_per_seg);
 	ret = read_page(cp2_page, super->fd, cpblk);
 	if(ret < 0) {
-		free(cp);
+		f2fs_free(cp);
 		free_page(cp1_page);
 		free_page(cp2_page);
 		perror("read page");
@@ -154,7 +163,7 @@ int f2fs_get_valid_checkpoint(struct f2fs_super *super)
 		ret = read_page(cp1_page, super->fd, cpblk + 1);
 		if(ret < 0) {
 			perror("read page");
-			free(cp);
+			f2fs_free(cp);
 			free_page(cp1_page);
 			free_page(cp2_page);
 			return -1;
@@ -176,6 +185,7 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	int ret = 0, byteoff = 0, bitoff = 0;
 	unsigned long blkaddr = 0, tmpaddr, blocks_per_seg = 0;
 
+	memset(inode, 0, sizeof(struct f2fs_inode *));
 	nat_page = alloc_page();
 	if(nat_page == NULL) {
 		perror("alloc page");
@@ -222,6 +232,7 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	inode->raw_inode = raw_inode;
 	inode->nat_block = nat;
 	inode->ino = ino;
+	inode->count = 1;
 	return 0;
 }
 
@@ -241,6 +252,10 @@ void f2fs_free_inode(struct f2fs_inode *inode)
 
 int f2fs_get_inode(struct f2fs_inode *inode)
 {
+	if(inode->count <= 0) {
+		BUG("The inode was incorrect.\n");
+		return -1;
+	}
 	return inode->count++;
 }
 
@@ -251,7 +266,7 @@ int f2fs_put_inode(struct f2fs_inode *inode)
 	count = inode->count;
 	if(inode->count == 0) {
 		f2fs_free_inode(inode);
-		free(inode);
+		f2fs_free(inode);
 	}
 	return count;
 }
@@ -270,7 +285,7 @@ struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *ino
 		return NULL;
 	}
 
-	iter = (void *)malloc(sizeof(struct dir_iter));
+	iter = (void *)f2fs_malloc(sizeof(struct dir_iter));
 	if(iter == NULL) {
 		return NULL;
 	}
@@ -332,7 +347,7 @@ struct f2fs_inode *dir_iter_next(struct dir_iter *iter)
 			iter->pos = NULL;
 		}
 
-		tmp = (void *)malloc(sizeof(struct f2fs_inode));
+		tmp = (void *)f2fs_malloc(sizeof(struct f2fs_inode));
 		if(tmp == NULL) {
 			return NULL;
 		}
@@ -340,12 +355,11 @@ struct f2fs_inode *dir_iter_next(struct dir_iter *iter)
 		ino = le32_to_cpu(iter->dentry[i].ino);
 		ret = f2fs_read_inode(iter->super, tmp, ino);
 		if(ret < 0) {
-			free(tmp);
+			f2fs_free(tmp);
 			return NULL;
 		}
 		iter->off = i + 1;
 		iter->pos = tmp;
-		f2fs_get_inode(tmp);
 		return tmp;
 	}
 	return NULL;
@@ -367,7 +381,7 @@ void dir_iter_end(struct dir_iter *iter)
 		f2fs_put_inode(iter->pos);
 		iter->pos = NULL;
 	}
-	free(iter);
+	f2fs_free(iter);
 }
 
 int f2fs_read_ssa(struct f2fs_super *super)
@@ -464,23 +478,23 @@ static int __get_free_nat_bitmaps(struct f2fs_super *super)
 		(1 << le32_to_cpu(super->raw_super->log_blocks_per_seg)) -
 		nat_bits_blocks;
 
-	nat_bits = (void *)malloc(nat_bits_blocks << F2FS_BLKSIZE_BITS);
+	nat_bits = (void *)f2fs_malloc(nat_bits_blocks << F2FS_BLKSIZE_BITS);
 	if(nat_bits == NULL) {
-		perror("malloc");
+		perror("f2fs_malloc");
 		return -ENOMEM;
 	}
 
 	page = alloc_page();
 	if(page == NULL) {
 		perror("alloc_page");
-		free(nat_bits);
+		f2fs_free(nat_bits);
 		return -ENOMEM;
 	}
 
 	for(i=0; i<nat_bits_blocks; i++) {
 		ret = read_page(page, super->fd, nat_bits_addr++);
 		if(ret < 0) {
-			free(nat_bits);
+			f2fs_free(nat_bits);
 			goto out;
 		}
 
