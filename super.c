@@ -190,7 +190,6 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	byteoff = ino / 8;
 	bitoff = ino % 8;
 	if(!(super->nat_bitmap[byteoff] & (1 << bitoff))) {
-		printf("here\n");
 		blkaddr += blocks_per_seg;
 	}
 
@@ -203,10 +202,6 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	}
 
 	nat = (void *)page_address(nat_page);
-	printf("%d %d %d\n", nat->entries[ino % NAT_ENTRY_PER_BLOCK].version,
-		le32_to_cpu(nat->entries[ino % NAT_ENTRY_PER_BLOCK].ino),
-		le32_to_cpu(nat->entries[ino % NAT_ENTRY_PER_BLOCK].block_addr));
-
 	inode_page = alloc_page();
 	if(inode_page == NULL) {
 		free_page(nat_page);
@@ -215,7 +210,6 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	}
 
 	blkaddr = le32_to_cpu(nat->entries[ino % NAT_ENTRY_PER_BLOCK].block_addr);
-	printf("blkaddr %lu\n", blkaddr);
 	ret = read_page(inode_page, super->fd, blkaddr);
 	if(ret < 0) {
 		free_page(inode_page);
@@ -225,7 +219,6 @@ int f2fs_read_inode(struct f2fs_super *super, struct f2fs_inode *inode, inode_t 
 	}
 
 	raw_inode = (void *)page_address(inode_page);
-	printf("%lu\n", (size_t)le64_to_cpu(raw_inode->i_mode));
 
 	inode->raw_inode = raw_inode;
 	inode->nat_block = nat;
@@ -269,6 +262,10 @@ struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *ino
 	struct f2fs_dentry_block *dentry_block = NULL;
 	struct page *page = NULL;
 	int ret = 0;
+	struct f2fs_node *node = NULL;
+	void *inline_data = NULL;
+	int reserved_size = 0, bitmap_size = 0;
+
 	if(!S_ISDIR(le32_to_cpu(inode->raw_inode->i_mode))) {
 		return NULL;
 	}
@@ -280,19 +277,29 @@ struct dir_iter *dir_iter_start(struct f2fs_super *super, struct f2fs_inode *ino
 
 	memset((void *)iter, 0, sizeof(struct dir_iter));
 	if(le32_to_cpu(inode->raw_inode->i_inline) && F2FS_INLINE_DENTRY) {
-		iter->dentry_inline = 1;
-		printf("iter inline not support\n");
-		return NULL;
-	}
+		node = (struct f2fs_node *)inode->raw_inode;
+		inline_data = inline_data_addr(inode->raw_inode);
+		reserved_size = INLINE_RESERVED_SIZE(inode->raw_inode);
+		bitmap_size = INLINE_DENTRY_BITMAP_SIZE(inode->raw_inode);
 
-	page = alloc_page();
-	ret = read_page(page, super->fd, le32_to_cpu(inode->raw_inode->i_addr[0]));
-	dentry_block = page_address(page);
-	printf("inode:%u\n", le32_to_cpu(dentry_block->dentry[1].ino));
+		iter->dentry_bitmap = inline_data;
+		iter->dentry_inline = 1;
+		iter->dentry = inline_data + bitmap_size + reserved_size;
+		iter->entry_cnt = NR_INLINE_DENTRY(inode->raw_inode);
+
+	} else {
+		page = alloc_page();
+		ret = read_page(page, super->fd, le32_to_cpu(inode->raw_inode->i_addr[0]));
+		dentry_block = page_address(page);
+		iter->dentry_bitmap = dentry_block->dentry_bitmap;
+		iter->dentry_inline = 0;
+		iter->dentry = dentry_block->dentry;
+		iter->entry_cnt = SIZE_OF_DENTRY_BITMAP;
+	}
 
 	iter->inode = inode;
 	iter->off = 0;
-	iter->dentry = dentry_block;
+	iter->dentry_block = dentry_block;
 	iter->super = super;
 	iter->pos = NULL;
 	return iter;
@@ -310,12 +317,13 @@ struct f2fs_inode *dir_iter_next(struct dir_iter *iter)
 		return NULL;
 	}
 
+	/*TODO*/
+
 	inode = iter->inode;
-	dentry = iter->dentry;
-	for(i=iter->off; i< SIZE_OF_DENTRY_BITMAP * BITS_PER_BYTE; i++) {
+	for(i=iter->off; i< iter->entry_cnt; i++) {
 		byteoff = i / BITS_PER_BYTE;
 		bitoff = i % BITS_PER_BYTE;
-		if(!(dentry->dentry_bitmap[byteoff] & (1 << bitoff))) {
+		if(!(iter->dentry_bitmap[byteoff] & (1 << bitoff))) {
 			continue;
 		}
 
@@ -329,13 +337,13 @@ struct f2fs_inode *dir_iter_next(struct dir_iter *iter)
 			return NULL;
 		}
 
-		iter->off = i + 1;
-		ino = le32_to_cpu(dentry->dentry[i].ino);
+		ino = le32_to_cpu(iter->dentry[i].ino);
 		ret = f2fs_read_inode(iter->super, tmp, ino);
 		if(ret < 0) {
 			free(tmp);
 			return NULL;
 		}
+		iter->off = i + 1;
 		iter->pos = tmp;
 		f2fs_get_inode(tmp);
 		return tmp;
@@ -350,8 +358,10 @@ void dir_iter_end(struct dir_iter *iter)
 		return;
 	}
 
-	page = address_to_page(iter->dentry);
-	free_page(page);
+	if(iter->dentry_block) {
+		page = address_to_page(iter->dentry_block);
+		free_page(page);
+	}
 
 	if(iter->pos != NULL) {
 		f2fs_put_inode(iter->pos);
@@ -454,8 +464,6 @@ static int __get_free_nat_bitmaps(struct f2fs_super *super)
 		(1 << le32_to_cpu(super->raw_super->log_blocks_per_seg)) -
 		nat_bits_blocks;
 
-	printf("bits_size:%lu, addr%llu\n", nat_bits_blocks << F2FS_BLKSIZE_BITS,
-		nat_bits_addr);
 	nat_bits = (void *)malloc(nat_bits_blocks << F2FS_BLKSIZE_BITS);
 	if(nat_bits == NULL) {
 		perror("malloc");
@@ -480,7 +488,6 @@ static int __get_free_nat_bitmaps(struct f2fs_super *super)
 			page_address(page), F2FS_BLKSIZE);
 	}
 	super->nat_bits = nat_bits;
-	print_hex(super->nat_bits, 40);
 
 out:
 	free_page(page);

@@ -89,10 +89,16 @@ static int path_lookup(struct f2fs_super *super, char *path)
 		}
 		name[nameoff] = '\0';
 
-		printf("name:%s\n", name);
+		if(nameoff == 1 && name[0] == '.') {
+			continue;
+		}
+
+		/*TODO: ..*/
+
 		iter = dir_iter_start(super, found);
 		while(iter_pos = dir_iter_next(iter)) {
-			printf("iter %s\n", iter_pos->raw_inode->i_name);
+			printf("Iter:%s filename: %s\n", found->raw_inode->i_name,
+				iter_pos->raw_inode->i_name);
 			if(!strcmp(name, iter_pos->raw_inode->i_name)) {
 				printf("Found %s\n", name);
 				f2fs_get_inode(iter_pos);
@@ -139,8 +145,8 @@ int main(int argc, char **argv)
 		return ret;
 	}
 
-	print_super(&super);
-	print_checkpoint(&super);
+//	print_super(&super);
+//	print_checkpoint(&super);
 
 	f2fs_read_inode(&super, &super.root_inode, le32_to_cpu(super.raw_super->root_ino));
 	printf("%d\n", super.root_inode.raw_inode->i_mode);

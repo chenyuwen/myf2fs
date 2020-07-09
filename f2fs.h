@@ -67,4 +67,45 @@ static inline block_t start_sum_block(struct f2fs_super *super)
 		le32_to_cpu(super->raw_cp->cp_pack_start_sum);
 }
 
+static inline int get_extra_isize(struct f2fs_raw_inode *raw_inode)
+{
+	return le16_to_cpu(raw_inode->i_extra_isize) / sizeof(__le32);
+}
+
+static inline int get_inline_xattr_addrs(struct f2fs_raw_inode *raw_inode)
+{
+	if(raw_inode->i_inline && F2FS_INLINE_XATTR ||
+		raw_inode->i_inline && F2FS_INLINE_XATTR) {
+		return DEFAULT_INLINE_XATTR_ADDRS;
+	}
+	return 0;
+}
+
+#define DEF_INLINE_RESERVED_SIZE        1
+static inline void *inline_data_addr(struct f2fs_raw_inode *raw_inode)
+{
+	int extra_size = get_extra_isize(raw_inode);
+
+	return (void *)&(raw_inode->i_addr[extra_size + DEF_INLINE_RESERVED_SIZE]);
+}
+
+/* for inline stuff */
+#define MAX_INLINE_DATA(inode)  (sizeof(__le32) *                       \
+				(CUR_ADDRS_PER_INODE(inode) -           \
+				get_inline_xattr_addrs(inode) - \
+				DEF_INLINE_RESERVED_SIZE))
+
+/* for inline dir */
+#define NR_INLINE_DENTRY(inode) (MAX_INLINE_DATA(inode) * BITS_PER_BYTE / \
+				((SIZE_OF_DIR_ENTRY + F2FS_SLOT_LEN) * \
+				BITS_PER_BYTE + 1))
+
+#define INLINE_DENTRY_BITMAP_SIZE(inode)        ((NR_INLINE_DENTRY(inode) + \
+				BITS_PER_BYTE - 1) / BITS_PER_BYTE)
+
+#define INLINE_RESERVED_SIZE(inode)     (MAX_INLINE_DATA(inode) - \
+				((SIZE_OF_DIR_ENTRY + F2FS_SLOT_LEN) * \
+				NR_INLINE_DENTRY(inode) + \
+				INLINE_DENTRY_BITMAP_SIZE(inode)))
+
 #endif /*__F2FS_H__*/

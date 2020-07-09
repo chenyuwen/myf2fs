@@ -4,11 +4,15 @@
 #include "f2fs.h"
 
 struct dir_iter {
-	int dentry_inline;
-	int off;
+	int off, entry_cnt;
 	struct f2fs_super *super;
 	struct f2fs_inode *inode, *pos;
-	struct f2fs_dentry_block *dentry;
+	struct f2fs_dentry_block *dentry_block;
+
+	/* inline */
+	int dentry_inline;
+	char *dentry_bitmap;
+	struct f2fs_dir_entry *dentry;
 };
 
 static inline int f2fs_is_vaild_inode(struct f2fs_inode *inode)
