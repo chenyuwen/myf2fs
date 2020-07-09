@@ -118,7 +118,7 @@ int main(int argc, char **argv)
 	struct f2fs_super super;
 	int ret = 0;
 
-	if(argc <= 1) {
+	if(argc <= 2) {
 		return -1;
 	}
 
@@ -157,7 +157,7 @@ int main(int argc, char **argv)
 		return ret;
 	}
 
-	path_lookup(&super, "/dir1/file1");
+	path_lookup(&super, argv[2]);
 
 	f2fs_umount(&super);
 	return 0;
