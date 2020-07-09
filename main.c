@@ -53,7 +53,7 @@ void print_checkpoint(struct f2fs_super *super)
 	printf("\n");
 }
 
-static int f2fs_free_path(struct f2fs_super *super, struct path *path)
+static int f2fs_free_path(struct path *path)
 {
 	struct path *next = path, *tmp;
 
@@ -162,7 +162,7 @@ static struct path *path_lookup(struct f2fs_super *super, char *dir)
 	return path;
 
 out:
-	f2fs_free_path(super, path);
+	f2fs_free_path(path);
 	return NULL;
 }
 
@@ -234,7 +234,7 @@ int main(int argc, char **argv)
 		printf("FILE: %s\n", path->prev->inode->raw_inode->i_name);
 	}
 
-	f2fs_free_path(&super, path);
+	f2fs_free_path(path);
 free_root:
 	f2fs_put_inode(super.root);
 umount:
