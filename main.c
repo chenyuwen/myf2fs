@@ -76,7 +76,6 @@ static struct path *path_lookup(struct f2fs_super *super, char *dir)
 	struct path *path, *tmp, *new;
 
 	if(dir[0] != '/') {
-		printf("Not supported path:%s\n", dir);
 		return NULL;
 	}
 
@@ -113,11 +112,24 @@ static struct path *path_lookup(struct f2fs_super *super, char *dir)
 		}
 		name[nameoff] = '\0';
 
+		/* . */
 		if(nameoff == 1 && name[0] == '.') {
 			continue;
 		}
 
-		/*TODO: ..*/
+		/* .. */
+		if(nameoff == 2 && name[0] == '.' && name[1] == '.') {
+			if(path->prev->inode == super->root) {
+				goto out;
+			}
+
+			tmp = path->prev;
+			tmp->prev->next = path;
+			path->prev = tmp->prev;
+			f2fs_put_inode(tmp->inode);
+			free(tmp);
+			continue;
+		}
 
 		found = 0;
 		iter = dir_iter_start(super, path->prev->inode);
